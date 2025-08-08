@@ -44,15 +44,7 @@
     "type": "git",
     "url": "https://github.com/besotti/retryable-promise-ts.git"
   },
-  "homepage": "https://github.com/besotti/retryable-promise-ts#readme",
-  "bugs": {
-    "url": "https://github.com/besotti/retryable-promise-ts/issues"
-  },
-  "author": {
-    "name": "Benedikt Sottong",
-    "email": "8019787+besotti@users.noreply.github.com",
-    "url": "https://github.com/besotti/retryable-promise-ts"
-  },
+  "author": "Benedikt Sottong <8019787+besotti@users.noreply.github.com>",
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && npm run build:esm && npm run build:cjs",
@@ -67,7 +59,6 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "prepublishOnly": "npm run lint && npm run test && npm run build",
     "prepare": "npm run build",
-    "version": "npm run format && git add -A src",
     "postversion": "git push && git push --tags"
   },
   "devDependencies": {

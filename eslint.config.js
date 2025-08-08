@@ -2,6 +2,9 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
+  {
+    ignores: ['coverage/**', 'dist/**'],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -10,7 +13,6 @@ export default tseslint.config(
       sourceType: 'module',
     },
     rules: {
-      // Additional rules can be added here
       'no-console': 'warn',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': ['error'],
@@ -18,5 +20,12 @@ export default tseslint.config(
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
     },
+  },
+  {
+    // Disable no-console warnings for example files
+    files: ['examples/**/*.ts'],
+    rules: {
+      'no-console': 'off'
+    }
   }
 );
