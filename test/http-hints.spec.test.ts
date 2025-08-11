@@ -3,7 +3,7 @@ import { retry } from '../src';
 
 // dynamic mock so each test can set the hint
 let mockedHint: number | undefined = undefined;
-vi.mock('../../utils/internal/httpRetrySignals', () => ({
+vi.mock('../src/core/httpRetrySignals', () => ({
   extractRetryAfterMs: () => mockedHint,
 }));
 

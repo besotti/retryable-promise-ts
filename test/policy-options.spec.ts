@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { retry } from '../src';
-import * as delayMod from '../src/core/utils/delayMs';
+import * as delayMod from '../src/core/delayMs';
 
 type Fn<T> = (signal?: AbortSignal) => Promise<T>;
 

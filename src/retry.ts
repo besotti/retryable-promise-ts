@@ -1,8 +1,8 @@
 import { mergeAbortSignals } from './utils/mergeAbortSignals';
 import { RateLimiter } from './utils/rateLimiter';
 import { NextDelayOverride, RetryOptions } from './types';
-import { runDelayWithOverride } from './core/utils/delayWithOverride';
-import { extractRetryAfterMs } from './core/utils/httpRetrySignals';
+import { runDelayWithOverride } from './core/delayWithOverride';
+import { extractRetryAfterMs } from './core/httpRetrySignals';
 
 export type RetryIf = (error: unknown, attempt: number) => boolean | Promise<boolean>;
 export type RetryOnResult<T> = (result: T, attempt: number) => boolean | Promise<boolean>;

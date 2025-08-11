@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock must come before the import of retry so it uses the mocked version
-vi.mock('../src/utils/internal/delayWithOverride', () => {
+vi.mock('../src/core/delayWithOverride', () => {
   return {
     runDelayWithOverride: vi.fn(async () => true), // no real waiting
   };
@@ -10,7 +10,7 @@ vi.mock('../src/utils/internal/delayWithOverride', () => {
 
 // Now we can import after the mock is set up
 import { retry } from '../src';
-import { runDelayWithOverride } from '../src/core/utils/delayWithOverride';
+import { runDelayWithOverride } from '../src/core/delayWithOverride';
 
 // Helper: function that fails the first time, succeeds the second
 function flakyWithOnceError<T>(err: unknown, ok: T) {

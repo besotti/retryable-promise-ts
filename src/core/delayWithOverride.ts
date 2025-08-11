@@ -1,5 +1,5 @@
 import { delayMs } from './delayMs';
-import { NextDelayOverride } from '../../types';
+import { NextDelayOverride } from '../types';
 
 export const runDelayWithOverride = async <T>(args: {
   attempt: number;
