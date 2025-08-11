@@ -13,14 +13,14 @@ A robust, TypeScript-native library for handling async operations with retry log
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-  - [Basic Retry](#basic-retry)
-  - [Backoff Strategies](#backoff-strategies)
-  - [Timeout and Abort Control](#timeout-and-abort-control)
-  - [Rate Limiting](#rate-limiting)
+    - [Basic Retry](#basic-retry)
+    - [Backoff Strategies](#backoff-strategies)
+    - [Timeout and Abort Control](#timeout-and-abort-control)
+    - [Rate Limiting](#rate-limiting)
 - [API Reference](#api-reference)
-  - [retry()](#retry)
-  - [createBackoffDelayFn()](#createbackoffdelayfn)
-  - [RateLimiter](#ratelimiter)
+    - [retry()](#retry)
+    - [createBackoffDelayFn()](#createbackoffdelayfn)
+    - [RateLimiter](#ratelimiter)
 - [Examples](#examples)
 - [Advanced Features](#advanced-features)
 - [Roadmap](#roadmap)
@@ -42,6 +42,11 @@ A robust, TypeScript-native library for handling async operations with retry log
 | `abortable` | Manual cancellation of all retries | Essential for UI interactions | External signal + internal flag |
 | `onRetry` | Hooks for each retry attempt | Excellent for logging and debugging | `onRetry: (error, attempt) => void` |
 | `rateLimiting` | Controls the rate of operations | Prevents overloading external services | Token bucket algorithm with `rateLimiter` or `rateLimit` options |
+| `retryIf` | Retry only for certain errors | Skip retries for errors that should fail fast | `(error, attempt) => boolean | Promise<boolean>` |
+| `retryOnResult` | Retry based on the returned value | Useful for retrying empty or invalid responses | `(result, attempt) => boolean | Promise<boolean>` |
+| `maxElapsedTime` | Limit the total runtime for all attempts | Stops retries after a set time, even if retries remain | `maxElapsedTime: number` (ms) |
+| `nextDelayOverride` | Adjust the calculated next delay | Fine-tune wait times dynamically | `(ctx) => number | Promise<number>` |
+| `onGiveUp` | Run a final callback when retries are exhausted | Logging or cleanup before returning the error | `(lastError, attempts) => void | Promise<void>` |
 
 ## Installation
 
@@ -130,6 +135,45 @@ controller.abort(); // This will stop all pending and future retry attempts
 
 ### Rate Limiting
 
+### Advanced Retry Conditions
+
+You can go beyond simple retry counts and use conditions based on errors, results, total elapsed time, or custom delay overrides.
+
+```typescript
+import { retry } from 'retryable-promise-ts';
+
+// Retry only if it's a network error
+await retry(fetchData, {
+  retryIf: (err) => err instanceof NetworkError
+});
+
+// Retry if the result is empty
+await retry(fetchData, {
+  retryOnResult: (res) => res == null
+});
+
+// Stop all retries after 5 seconds total runtime
+await retry(fetchData, {
+  retries: 10,
+  maxElapsedTime: 5000
+});
+
+// Override next delay to enforce a minimum wait
+await retry(fetchData, {
+  retries: 3,
+  nextDelayOverride: (ctx) => Math.max(ctx.suggestedDelayMs, 200)
+});
+
+// Final hook when all retries fail
+await retry(fetchData, {
+  retries: 3,
+  onGiveUp: (err, attempts) => {
+    console.error(`All ${attempts} attempts failed`, err);
+  }
+});
+```
+
+
 You can control the rate of operations to avoid overwhelming external services:
 
 ```typescript
@@ -170,13 +214,18 @@ function retry<T>(
 
 - `fn`: The async function to retry. It can optionally accept an AbortSignal.
 - `options`: Configuration object with the following properties:
-  - `retries`: Number of retry attempts (default: 3)
-  - `timeout`: Time limit in ms for each attempt
-  - `signal`: AbortSignal to cancel all retries
-  - `delayFn`: Function that returns a promise resolving after a delay
-  - `onRetry`: Callback function called after each failed attempt
-  - `rateLimiter`: RateLimiter instance for controlling operation rate
-  - `rateLimit`: Options to create a new RateLimiter
+    - `retries`: Number of retry attempts (default: 3)
+    - `timeout`: Time limit in ms for each attempt
+    - `signal`: AbortSignal to cancel all retries
+    - `delayFn`: Function that returns a promise resolving after a delay
+    - `onRetry`: Callback function called after each failed attempt
+    - `rateLimiter`: RateLimiter instance for controlling operation rate
+    - `rateLimit`: Options to create a new RateLimiter
+    - `retryIf`: Function to decide if an error should trigger a retry
+    - `retryOnResult`: Function to decide if a result should trigger a retry
+    - `maxElapsedTime`: Max total runtime in ms for all attempts
+    - `nextDelayOverride`: Function to adjust the next delay dynamically
+    - `onGiveUp`: Called once before returning the last error
 
 **Returns:**
 
@@ -212,9 +261,9 @@ class RateLimiter {
 **Parameters for constructor:**
 
 - `options`: Configuration object with the following properties:
-  - `tokensPerInterval`: Number of operations allowed per interval
-  - `interval`: Time interval in milliseconds
-  - `jitterMode`: How to apply randomness to delays ('none', 'full', or 'equal')
+    - `tokensPerInterval`: Number of operations allowed per interval
+    - `interval`: Time interval in milliseconds
+    - `jitterMode`: How to apply randomness to delays ('none', 'full', or 'equal')
 
 **Methods:**
 
@@ -241,17 +290,6 @@ Future development plans include:
 - Better browser compatibility (for older browsers)
 - Additional backoff strategies
 - Enhanced monitoring and metrics
-
-## Contributing
-
-If you've found a bug, have an idea for a missing feature, or just want to improve the code, feel free to jump in. 
-
-1. Fork the repo
-2. Create a branch: git checkout -b your-thing
-3. Make your changes (tests are always appreciated)
-4. Push and open a pull request
-
-Please make sure to update tests as appropriate and adhere to the existing coding style.
 
 ### Development
 

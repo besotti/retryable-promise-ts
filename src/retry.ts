@@ -31,6 +31,22 @@ export const retry = async <T>(
 
   const startTime = Date.now();
 
+  /** wrap nextDelayOverride to parse http errors as a floor (Retry-After / RateLimit-Reset) */
+  const wrapWithHttpHints = <T>(
+    base?: NextDelayOverride<T>,
+    err?: unknown
+  ): NextDelayOverride<T> | undefined => {
+    return async ctx => {
+      const hinted = extractRetryAfterMs(err);
+      const inner = base ? await base(ctx) : ctx.suggestedDelayMs;
+
+      if (typeof hinted === 'number') {
+        return Math.max(hinted, inner);
+      }
+      return inner;
+    };
+  };
+
   return new Promise<T>((resolve, reject) => {
     let attempts = 0;
     let isFinalized = false;
@@ -165,19 +181,3 @@ export const retry = async <T>(
     execute();
   });
 };
-
-/** wrap nextDelayOverride to parse http errors as floor (Retry-After / RateLimit-Reset) */
-function wrapWithHttpHints<T>(
-  base?: NextDelayOverride<T>,
-  err?: unknown
-): NextDelayOverride<T> | undefined {
-  return async ctx => {
-    const hinted = extractRetryAfterMs(err);
-    const inner = base ? await base(ctx) : ctx.suggestedDelayMs;
-
-    if (typeof hinted === 'number') {
-      return Math.max(hinted, inner);
-    }
-    return inner;
-  };
-}
