@@ -1,12 +1,12 @@
-export type BackoffStrategy = 
-  | 'constant'    // Constant delay
-  | 'linear'      // Linear increasing delay
+export type BackoffStrategy =
+  | 'constant' // Constant delay
+  | 'linear' // Linear increasing delay
   | 'exponential' // Exponential increasing delay (2^n)
   | ((attempt: number) => number); // Custom function
 
 /**
  * Creates a delay function with configurable backoff strategy
- * 
+ *
  * @param strategy - Type of delay between retry attempts
  * @param baseDelay - Base delay in ms (default: 1000ms)
  */

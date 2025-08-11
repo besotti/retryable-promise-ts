@@ -33,7 +33,7 @@ describe('retry function', () => {
     // Run all timers for the retries
     await vi.runAllTimersAsync();
     await expect(promise).resolves.toBe('success');
-    
+
     // Should be called exactly 3 times
     expect(mockFn).toHaveBeenCalledTimes(3);
   });
@@ -62,10 +62,7 @@ describe('retry function', () => {
   });
 
   it('does not crash when no onRetry is provided', async () => {
-    const mockFn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('Error'))
-      .mockResolvedValue('success');
+    const mockFn = vi.fn().mockRejectedValueOnce(new Error('Error')).mockResolvedValue('success');
 
     const promise = retry(mockFn); // no onRetry here
 

@@ -1,10 +1,13 @@
 /**
  * Combines multiple AbortSignals into a single signal
- * 
+ *
  * If any of the input signals is aborted, the combined
  * signal will also be aborted.
  */
-export const mergeAbortSignals = (signals: (AbortSignal | undefined)[], controller?: AbortController): AbortSignal => {
+export const mergeAbortSignals = (
+  signals: (AbortSignal | undefined)[],
+  controller?: AbortController
+): AbortSignal => {
   const internalController = controller ?? new AbortController();
 
   for (const signal of signals) {

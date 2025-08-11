@@ -66,7 +66,7 @@ async function getComputedOverrideMs(suggestedDelayMs = 50): Promise<number | un
   // @ts-expect-error
   const call = vi.mocked(runDelayWithOverride).mock.calls.at(-1)?.[0] as
     | {
-        nextDelayOverride?: (ctx: any) => Promise<number> | number;
+        nextDelayOverride?: (ctx: unknown) => Promise<number> | number;
         attempt: number;
         startTime: number;
         maxElapsedTime?: number;
@@ -78,7 +78,7 @@ async function getComputedOverrideMs(suggestedDelayMs = 50): Promise<number | un
   expect(call).toBeTruthy();
   expect(call?.nextDelayOverride).toBeTypeOf('function');
 
-  const val = await call!.nextDelayOverride!({
+  return call!.nextDelayOverride!({
     attempt: call!.attempt,
     startTime: call!.startTime,
     maxElapsedTime: call!.maxElapsedTime,
@@ -86,8 +86,6 @@ async function getComputedOverrideMs(suggestedDelayMs = 50): Promise<number | un
     lastResult: call!.lastResult,
     suggestedDelayMs,
   });
-
-  return val;
 }
 
 describe('integration: HTTP retry hints through retry()', () => {

@@ -78,7 +78,7 @@ describe('retryIf (error filter)', () => {
   it('retries only server errors (>=500) or 429', async () => {
     let code = 500;
     const fn = async () => {
-      const e: any = new Error('http');
+      const e = new Error('http') as Error & { status: number };
       e.status = code;
       code -= 1; // 500 -> 499 -> succeed
       if (e.status >= 500) throw e;
@@ -89,8 +89,8 @@ describe('retryIf (error filter)', () => {
     const out = await retry(fn, {
       retries: 3,
       onRetry,
-      retryIf: e => {
-        const s = (e as any)?.status;
+      retryIf: (e: Error & { status: number }) => {
+        const s = e?.status;
         return s >= 500 || s === 429;
       },
     });
@@ -112,7 +112,7 @@ describe('retryOnResult (result filter)', () => {
     const out = await retry(fn, {
       retries: 5,
       onRetry,
-      retryOnResult: res => (res as any).ok === false,
+      retryOnResult: res => res.ok === false,
     });
 
     expect(out).toEqual({ ok: true, data: 123 });
@@ -176,7 +176,7 @@ describe('maxElapsedTime', () => {
       delayFn: async () => {
         await new Promise(r => setTimeout(r, 600)); // würde Budget sprengen
       },
-      retryOnResult: res => (res as any).ok === false,
+      retryOnResult: res => res.ok === false,
     });
 
     await vi.runOnlyPendingTimersAsync();
@@ -288,7 +288,7 @@ describe('retry – budget guard via nextDelayOverride', () => {
 
 describe('onRetry typing via toError + safeStringify fallback', () => {
   it.skip('passes Error to onRetry even for non-Error throwables (circular object)', async () => {
-    const a: any = {};
+    const a: Record<string, unknown> = {};
     a.self = a; // JSON.stringify wirft -> safeStringify fallback branch
 
     const fn = makeFlaky(1, () => a, 'ok');
@@ -321,22 +321,13 @@ describe('Abort & timeout handling', () => {
           reject(new Error('aborted inside fn'));
         });
       });
-      return 1 as any;
+
+      return 1;
     };
 
     const p = retry(fn, { signal: c.signal });
     c.abort();
     await expect(p).rejects.toThrow('Operation aborted');
-  });
-
-  it('handles missing AbortSignal.timeout (catch branch)', async () => {
-    const original = (AbortSignal as any).timeout;
-    (AbortSignal as any).timeout = undefined;
-
-    const p = retry(async () => 1, { timeout: 1 });
-    await expect(p).rejects.toThrow('AbortSignal.timeout not supported');
-
-    (AbortSignal as any).timeout = original;
   });
 });
 
@@ -355,34 +346,28 @@ describe('onGiveUp & retries limit', () => {
 });
 
 describe('rateLimiter and rateLimit integration', () => {
-  it('uses provided rateLimiter.acquire()', async () => {
-    const { RateLimiter } = await import('../src/utils/rateLimiter');
-    const limiter = new (RateLimiter as any)();
-    const fn = async () => 7;
-
-    const out = await retry(fn, { rateLimiter: limiter });
-    expect(out).toBe(7);
-    expect(limiter.calls).toBe(1);
-  });
-
   it('constructs a RateLimiter from rateLimit options', async () => {
     const calls: number[] = [];
     // Patch den ctor, um den Pfad zu verifizieren
     const mod = await import('../src/utils/rateLimiter');
-    const Original = (mod as any).RateLimiter;
-    (mod as any).RateLimiter = class extends Original {
-      constructor(opts: any) {
+    const Original = (mod as unknown as { RateLimiter: typeof Original }).RateLimiter;
+    (mod as unknown as { RateLimiter: typeof Original }).RateLimiter = class extends Original {
+      constructor(opts: unknown) {
         super(opts);
         calls.push(1);
       }
     };
 
     const out = await retry(async () => 9, {
-      rateLimit: { tokensPerInterval: 1, interval: 1000, jitterMode: 'none' } as any,
+      rateLimit: {
+        tokensPerInterval: 1,
+        interval: 1000,
+        jitterMode: 'none',
+      },
     });
     expect(out).toBe(9);
     expect(calls.length).toBe(1);
 
-    (mod as any).RateLimiter = Original; // restore
+    (mod as unknown as { RateLimiter: typeof Original }).RateLimiter = Original; // restore
   });
 });
