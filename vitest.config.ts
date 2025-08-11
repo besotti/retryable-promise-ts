@@ -7,14 +7,16 @@ export default defineConfig({
       exclude: [
         '**/examples/**',
         '**/node_modules/**',
-        '**/dist/**'
+        '**/dist/**',
+        'eslint.config.js',
+        'vitest.config.ts',
       ],
       thresholds: {
-        lines: 50,
-        functions: 50,
-        branches: 50,
-        statements: 50
-      }
-    }
-  }
+        lines: 99,
+        functions: 100,
+        branches: 98,
+        statements: 99,
+      },
+    },
+  },
 });

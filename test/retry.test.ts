@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { retry } from '../src';
+import * as delayMsMod from '../src/core/delayMs';
 
 describe('retry function', () => {
   beforeEach(() => {
@@ -33,7 +34,7 @@ describe('retry function', () => {
     // Run all timers for the retries
     await vi.runAllTimersAsync();
     await expect(promise).resolves.toBe('success');
-    
+
     // Should be called exactly 3 times
     expect(mockFn).toHaveBeenCalledTimes(3);
   });
@@ -62,10 +63,7 @@ describe('retry function', () => {
   });
 
   it('does not crash when no onRetry is provided', async () => {
-    const mockFn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('Error'))
-      .mockResolvedValue('success');
+    const mockFn = vi.fn().mockRejectedValueOnce(new Error('Error')).mockResolvedValue('success');
 
     const promise = retry(mockFn); // no onRetry here
 
@@ -128,5 +126,94 @@ describe('retry function', () => {
     const result = await promiseResult;
 
     expect(result).toEqual(finalError);
+  });
+});
+describe('retry → runDelayWithOverride target calculation', () => {
+  it('nimmt suggested (250) > waited (~100) → extra ≈ 150 und ruft delayMs(extra)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+
+    // Spy auf delayMs (nur EXTRA-Delay, base-delay kommt über delayFn → setTimeout)
+    const delaySpy = vi.spyOn(delayMsMod, 'delayMs').mockResolvedValue();
+
+    // 1. Versuch schlägt fehl, 2. Versuch liefert Erfolg
+    let attempts = 0;
+    const fn = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('boom');
+      return 42;
+    };
+
+    // base delay für waited ≈ 100 ms
+    const delayFn = async () => new Promise<void>(r => setTimeout(r, 100));
+
+    // override liefert target = 250 ms
+    const nextDelayOverride = vi.fn().mockResolvedValue(250);
+
+    const p = retry(fn, {
+      retries: 2,
+      delayFn,
+      nextDelayOverride,
+      maxElapsedTime: 10_000,
+    });
+
+    // base-delay ablaufen lassen → waited ≈ 100
+    await vi.advanceTimersByTimeAsync(100);
+
+    // unser base-override wurde via withHttpHints(...) aufgerufen
+    expect(nextDelayOverride).toHaveBeenCalledTimes(1);
+    const ctx = nextDelayOverride.mock.calls[0][0];
+    expect(ctx.attempt).toBe(1);
+    expect(Math.abs(ctx.suggestedDelayMs - 100)).toBeLessThanOrEqual(5);
+
+    // target = 250, waited ≈ 100 → extra ≈ 150 → delayMs(extra) muss gerufen werden
+    expect(delaySpy).toHaveBeenCalledTimes(1);
+    const extraArg = delaySpy.mock.calls[0][0] as number;
+    expect(Math.abs(extraArg - 150)).toBeLessThanOrEqual(5);
+
+    // retry schließt erfolgreich ab (2. Versuch)
+    const out = await p;
+    expect(out).toBe(42);
+    expect(attempts).toBe(2);
+
+    delaySpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('negatives suggested wird auf 0 geklemmt → kein extra-Delay', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+
+    const delaySpy = vi.spyOn(delayMsMod, 'delayMs').mockResolvedValue();
+
+    let attempts = 0;
+    const fn = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('boom');
+      return 'ok';
+    };
+
+    const delayFn = async () => new Promise<void>(r => setTimeout(r, 100));
+
+    // suggested = -50 → target = 0 → extra = max(0, 0 - waited) = 0 → kein delayMs-Aufruf
+    const nextDelayOverride = vi.fn().mockResolvedValue(-50);
+
+    const p = retry(fn, {
+      retries: 2,
+      delayFn,
+      nextDelayOverride,
+      maxElapsedTime: 10_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    const out = await p;
+
+    expect(out).toBe('ok');
+    expect(attempts).toBe(2);
+    expect(nextDelayOverride).toHaveBeenCalledTimes(1);
+    expect(delaySpy).not.toHaveBeenCalled();
+
+    delaySpy.mockRestore();
+    vi.useRealTimers();
   });
 });
