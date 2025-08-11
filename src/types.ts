@@ -11,56 +11,56 @@ export type NextDelayInput<T = unknown> = {
 export type NextDelayOverride<T = unknown> = (ctx: NextDelayInput<T>) => number | Promise<number>;
 
 export interface RateLimiterLike {
-  acquire(): Promise<void>;
+  acquire: () => Promise<void>;
 }
 
 export interface RateLimitOptions {
   tokensPerInterval: number;
-  interval: number; // in ms
+  interval: number; // ms
   /**
-   * Controls how jitter is applied to delays:
-   * - 'none': No jitter, use exact delays
-   * - 'full': Random delay between 0 and calculated delay
-   * - 'equal': Random delay between 50% and 100% of calculated delay
+   * Jitter strategy:
+   * - 'none': exact delay
+   * - 'full': 0..delay
+   * - 'equal': 50%..100% of delay
    * @default 'none'
    */
   jitterMode?: JitterMode;
 }
 
 export interface RetryOptions<T> {
-  /** Max number of retries. 0 means no retry after the first attempt. */
+  /** Max retries. 0 = no retry after first attempt. */
   retries?: number;
 
-  /** Per-attempt timeout. Aborts the current try, the runner may still retry. */
+  /** Per-attempt timeout. Cancels the current try. */
   timeout?: number;
 
-  /** Abort the whole retry loop from the outside. */
+  /** Abort the whole loop. */
   signal?: AbortSignal;
 
-  /** Custom wait before the next attempt. Receives the attempt number. */
+  /** Custom wait before the next attempt. Gets the attempt number. */
   delayFn?: (attempt: number) => Promise<void>;
 
-  /** Called right before scheduling the next retry with the error and attempt. */
+  /** Called before we schedule the next try. */
   onRetry?: (error: Error, attempt: number) => void;
 
-  /** Shared rate limiter to pace attempts across calls. */
+  /** Shared limiter to pace attempts across calls. */
   rateLimiter?: RateLimiter;
 
-  /** Build-time options for an internal rate limiter (when no limiter is passed). */
+  /** Build-time options when no limiter instance is passed. */
   rateLimit?: RateLimitOptions;
 
-  /** Decide if an error should trigger a retry. Return true to retry. */
+  /** Return true to retry on this error. */
   retryIf?: RetryIf;
 
-  /** Decide if a result should trigger another attempt. Return true to retry. */
+  /** Return true to retry based on the result. */
   retryOnResult?: RetryOnResult<T>;
 
-  /** Hard cap for total elapsed time across all attempts. Exceeding stops with failure. */
+  /** Hard cap for total elapsed ms across all attempts. */
   maxElapsedTime?: number;
 
-  /** Hook to override the computed delay for the next attempt. */
+  /** Hook to override the next delay. */
   nextDelayOverride?: NextDelayOverride<T>;
 
-  /** Called once when we give up for good. Gets the last error and attempt count. */
+  /** Called once when we give up for good. */
   onGiveUp?: (lastError: unknown, attempts: number) => void | Promise<void>;
 }

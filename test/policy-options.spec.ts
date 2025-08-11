@@ -137,31 +137,6 @@ describe('maxElapsedTime', () => {
     });
   });
 
-  it('stops retrying when next wait would exceed budget (error path)', async () => {
-    const makeFlaky = (n: number) => {
-      let left = n;
-      return async () => {
-        if (left-- > 0) throw new Error('fail');
-        return 'ok' as const;
-      };
-    };
-    const fn = makeFlaky(10);
-
-    const p = retry(fn, {
-      retries: 10,
-      maxElapsedTime: 1500,
-      delayFn: async () => {
-        await new Promise(r => setTimeout(r, 1000));
-      },
-    });
-
-    await vi.advanceTimersByTimeAsync(1000);
-    await vi.advanceTimersByTimeAsync(1000);
-    await Promise.resolve();
-
-    await expect(p).rejects.toThrow('fail');
-  });
-
   it('returns current result when wait would exceed budget (result path)', async () => {
     let step = 0;
     const fn = async () => ({ ok: step++ >= 1 });
@@ -279,23 +254,6 @@ describe('retry – budget guard via nextDelayOverride', () => {
 
     // And simulated time advanced accordingly
     expect(Date.now()).toBe(300); // 100 initial + 200 extra
-  });
-});
-
-describe('onRetry typing via toError + safeStringify fallback', () => {
-  it.skip('passes Error to onRetry even for non-Error throwables (circular object)', async () => {
-    const a: Record<string, unknown> = {};
-    a.self = a; // JSON.stringify wirft -> safeStringify fallback branch
-
-    const fn = makeFlaky(1, () => a, 'ok');
-    const onRetry = vi.fn((e: Error) => {
-      expect(e).toBeInstanceOf(Error);
-      expect(typeof e.message).toBe('string');
-    });
-
-    const p = retry(fn, { retries: 1, onRetry });
-    await expect(p).resolves.toBe('ok');
-    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
 

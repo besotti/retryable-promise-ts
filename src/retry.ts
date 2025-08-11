@@ -7,6 +7,23 @@ import { extractRetryAfterMs } from './core/httpRetrySignals';
 export type RetryIf = (error: unknown, attempt: number) => boolean | Promise<boolean>;
 export type RetryOnResult<T> = (result: T, attempt: number) => boolean | Promise<boolean>;
 
+/**
+ * Executes an async function with configurable retry logic.
+ *
+ * Features:
+ * - Retry on error or based on the returned result
+ * - Optional timeout and AbortSignal support
+ * - Rate limiting (external limiter or config-based)
+ * - Adjustable delays with override functions and HTTP `Retry-After` handling
+ * - Stops on max retries, max elapsed time, or abort signal
+ *
+ * @template T Return type of the function
+ * @param fn       Function to execute. Receives an optional AbortSignal.
+ * @param options  Retry configuration (retries, delay, abort, rate limit, hooks, etc.)
+ * @returns        Resolves with the successful result or rejects after all retries fail
+ *
+ * @throws Error with reason if aborted, max time exceeded, or no retry condition is met
+ */
 export const retry = async <T>(
   fn: (signal?: AbortSignal) => Promise<T>,
   options: RetryOptions<T> = {}
@@ -26,158 +43,98 @@ export const retry = async <T>(
     onGiveUp,
   } = options;
 
-  // Create a rate limiter if options are provided or use the provided one
   const rateLimiter = rateLimit ? new RateLimiter(rateLimit) : providedRateLimiter;
-
   const startTime = Date.now();
 
-  /** wrap nextDelayOverride to parse http errors as a floor (Retry-After / RateLimit-Reset) */
-  const wrapWithHttpHints = <T>(
-    base?: NextDelayOverride<T>,
-    err?: unknown
-  ): NextDelayOverride<T> | undefined => {
-    return async ctx => {
+  const withHttpHints =
+    <U>(base?: NextDelayOverride<U>, err?: unknown): NextDelayOverride<U> | undefined =>
+    async ctx => {
       const hinted = extractRetryAfterMs(err);
       const inner = base ? await base(ctx) : ctx.suggestedDelayMs;
-
-      if (typeof hinted === 'number') {
-        return Math.max(hinted, inner);
-      }
-      return inner;
+      return typeof hinted === 'number' ? Math.max(hinted, inner) : inner;
     };
+
+  const fail = async (err: unknown, attempts: number): Promise<never> => {
+    try {
+      await onGiveUp?.(err, attempts);
+    } catch {
+      /* do nothing*/
+    }
+    throw err;
   };
 
-  return new Promise<T>((resolve, reject) => {
-    let attempts = 0;
-    let isFinalized = false;
+  let attempts = 0;
 
-    const finalizeReject = (lastError: unknown, attemptsForCb: number): void => {
-      if (isFinalized) return;
-      isFinalized = true;
+  for (;;) {
+    if (maxElapsedTime !== undefined && Date.now() - startTime >= maxElapsedTime) {
+      const e = new Error('Retry maxElapsedTime exceeded');
+      e.name = 'RetryMaxElapsedTimeExceeded';
+      return fail(e, attempts);
+    }
 
-      if (onGiveUp) {
-        Promise.resolve(onGiveUp(lastError, attemptsForCb)).catch(() => {});
-      }
-      reject(lastError);
-    };
+    const signals: AbortSignal[] = [];
+    if (externalSignal) signals.push(externalSignal);
 
-    const execute = async (): Promise<void> => {
-      if (isFinalized) return;
-
-      // check global budget
-      if (maxElapsedTime !== undefined && Date.now() - startTime >= maxElapsedTime) {
-        const e = new Error('Retry maxElapsedTime exceeded');
-        e.name = 'RetryMaxElapsedTimeExceeded';
-
-        finalizeReject(e, attempts);
-        return;
-      }
-
-      const signals: AbortSignal[] = [];
-      if (externalSignal) signals.push(externalSignal);
-
-      if (timeout !== undefined) {
-        try {
-          signals.push(AbortSignal.timeout(timeout));
-        } catch {
-          finalizeReject(new Error('AbortSignal.timeout not supported'), attempts);
-          return;
-        }
-      }
-
-      const combinedSignal = mergeAbortSignals(signals);
-
-      // Handle abort signal to prevent further retries
-      if (combinedSignal.aborted) {
-        finalizeReject(new Error('Operation aborted'), attempts);
-        return;
-      } else {
-        combinedSignal.addEventListener(
-          'abort',
-          () => {
-            finalizeReject(new Error('Operation aborted'), attempts);
-          },
-          { once: true }
-        );
-      }
-
+    if (timeout !== undefined) {
       try {
-        // Apply rate limiting if a rate limiter is provided
-        if (rateLimiter) {
-          await rateLimiter.acquire();
-        }
+        signals.push(AbortSignal.timeout(timeout));
+      } catch {
+        return fail(new Error('AbortSignal.timeout not supported'), attempts);
+      }
+    }
 
-        const result = await fn(combinedSignal);
+    const combined = mergeAbortSignals(signals);
+    if (combined.aborted) return fail(new Error('Operation aborted'), attempts);
 
-        if (retryOnResult && (await retryOnResult(result, attempts + 1))) {
-          attempts++;
+    const abortPromise = new Promise<never>((_, rej) => {
+      combined.addEventListener('abort', () => rej(new Error('Operation aborted')), { once: true });
+    });
 
-          if (attempts > retries) {
-            isFinalized = true;
-            resolve(result);
-            return;
-          }
+    try {
+      if (rateLimiter) await rateLimiter.acquire();
 
-          const waited = await runDelayWithOverride<T>({
-            attempt: attempts,
-            delayFn,
-            nextDelayOverride,
-            maxElapsedTime,
-            startTime,
-            lastResult: result,
-          });
+      const result = await Promise.race<[T, never]>([
+        fn(combined) as unknown as Promise<[T, never]>,
+        abortPromise,
+      ]).then(v => (Array.isArray(v) ? v[0] : (v as unknown as T)));
 
-          if (!waited) {
-            isFinalized = true;
-            resolve(result); // return best result - not enough budget
-            return;
-          }
-
-          // next try
-          execute();
-          return;
-        }
-
-        // success
-        isFinalized = true;
-        resolve(result);
-      } catch (err: unknown) {
-        if (isFinalized || combinedSignal.aborted) {
-          finalizeReject(err, attempts + 1 /* the in-flight attempt errored */);
-          return;
-        }
-
-        // Error-Filter (optional)
-        const shouldRetry = attempts < retries && (!retryIf || (await retryIf(err, attempts + 1)));
-        if (!shouldRetry) {
-          finalizeReject(err, attempts + 1);
-          return;
-        }
-
+      if (retryOnResult && (await retryOnResult(result, attempts + 1))) {
         attempts++;
-        if (err instanceof Error) {
-          onRetry?.(err, attempts);
-        }
+        if (attempts > retries) return result;
 
-        // calculate delay (if possible, override + retry-after-floor)
         const waited = await runDelayWithOverride<T>({
           attempt: attempts,
           delayFn,
-          nextDelayOverride: wrapWithHttpHints(nextDelayOverride, err),
+          nextDelayOverride,
           maxElapsedTime,
           startTime,
-          lastError: err,
+          lastResult: result,
         });
 
-        if (!waited) {
-          finalizeReject(err, attempts);
-          return;
-        }
-
-        await execute();
+        if (!waited) return result;
+        continue;
       }
-    };
 
-    execute();
-  });
+      return result;
+    } catch (err) {
+      if (combined.aborted) return fail(err, attempts + 1);
+
+      const canRetry = attempts < retries && (!retryIf || (await retryIf(err, attempts + 1)));
+      if (!canRetry) return fail(err, attempts + 1);
+
+      attempts++;
+      if (err instanceof Error) onRetry?.(err, attempts);
+
+      const waited = await runDelayWithOverride<T>({
+        attempt: attempts,
+        delayFn,
+        nextDelayOverride: withHttpHints(nextDelayOverride, err),
+        maxElapsedTime,
+        startTime,
+        lastError: err,
+      });
+
+      if (!waited) return fail(err, attempts);
+    }
+  }
 };

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { retry } from '../src';
+import { withFakeTimers } from './utils/with-fake-timers';
 
 // dynamic mock so each test can set the hint
 let mockedHint: number | undefined = undefined;
@@ -7,16 +8,6 @@ vi.mock('../src/core/httpRetrySignals', () => ({
   extractRetryAfterMs: () => mockedHint,
 }));
 
-// tiny helpers
-const withFakeTimers = (fn: () => Promise<void> | void) => async () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(0));
-  try {
-    await fn();
-  } finally {
-    vi.useRealTimers();
-  }
-};
 const flush = async () => {
   await Promise.resolve();
   await Promise.resolve();

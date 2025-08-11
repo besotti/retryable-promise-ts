@@ -1,6 +1,19 @@
 import { delayMs } from './delayMs';
 import { NextDelayOverride } from '../types';
 
+/**
+ * Waits using a delay function, then optionally adjusts the wait time using an override.
+ * Will not run if the total elapsed time would exceed the allowed maximum.
+ *
+ * @param args.attempt         Current attempt number.
+ * @param args.delayFn         Function to handle the base delay.
+ * @param args.nextDelayOverride Function that can override the total delay.
+ * @param args.maxElapsedTime  Optional max time in ms for all attempts.
+ * @param args.startTime       Timestamp (ms) when the process started.
+ * @param args.lastError       The last error thrown, if any.
+ * @param args.lastResult      The last result returned, if any.
+ * @returns True if there is still time left in the budget, false otherwise.
+ */
 export const runDelayWithOverride = async <T>(args: {
   attempt: number;
   delayFn?: (attempt: number) => Promise<void>;
@@ -13,41 +26,38 @@ export const runDelayWithOverride = async <T>(args: {
   const { attempt, delayFn, nextDelayOverride, maxElapsedTime, startTime, lastError, lastResult } =
     args;
 
-  // check budget before waiting
-  if (maxElapsedTime !== undefined && Date.now() - startTime >= maxElapsedTime) {
-    return false;
-  }
+  const hasBudget = (extra = 0) => {
+    if (maxElapsedTime === undefined) return true;
+    const elapsed = Date.now() - startTime;
+    return elapsed + extra < maxElapsedTime;
+  };
 
-  const before = Date.now();
+  if (!hasBudget()) return false;
+
+  let waited = 0;
   if (delayFn) {
+    const t0 = Date.now();
     await delayFn(attempt);
+    waited = Date.now() - t0;
   }
 
-  const waited = Date.now() - before;
+  if (!nextDelayOverride) return hasBudget();
 
-  // Optional: Override (Floor). if override returns a number, it will be used as a delay
-  if (nextDelayOverride) {
-    const suggested = await nextDelayOverride({
-      attempt,
-      lastError,
-      lastResult,
-      suggestedDelayMs: waited,
-    });
+  const suggested = await nextDelayOverride({
+    attempt,
+    lastError,
+    lastResult,
+    suggestedDelayMs: waited,
+  });
 
-    const extra = Math.max(0, suggested - waited);
+  const target =
+    typeof suggested === 'number' && Number.isFinite(suggested) ? Math.max(0, suggested) : waited;
 
-    if (extra > 0) {
-      // check time budget
-      if (maxElapsedTime !== undefined) {
-        const elapsed = Date.now() - startTime;
-        if (elapsed + extra >= maxElapsedTime) {
-          return false;
-        }
-      }
-      await delayMs(extra);
-    }
-  }
+  const extra = Math.max(0, target - waited);
+  if (extra === 0) return hasBudget();
 
-  // check budget after waiting
-  return !(maxElapsedTime !== undefined && Date.now() - startTime >= maxElapsedTime);
+  if (!hasBudget(extra)) return false;
+
+  await delayMs(extra);
+  return hasBudget();
 };

@@ -1,15 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { RateLimiter, retry } from '../src';
-
-const withFakeTimers = (fn: () => Promise<void> | void) => async () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(0));
-  try {
-    await fn();
-  } finally {
-    vi.useRealTimers();
-  }
-};
+import { withFakeTimers } from './utils/with-fake-timers';
 
 const flush = async () => {
   // a single tick is most of the time not enough to flush all pending promises
