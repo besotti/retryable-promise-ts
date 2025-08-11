@@ -4,20 +4,20 @@
  * If any of the input signals is aborted, the combined
  * signal will also be aborted.
  */
-export const mergeAbortSignals = (signals: (AbortSignal | undefined)[]): AbortSignal => {
-  const controller = new AbortController();
+export const mergeAbortSignals = (signals: (AbortSignal | undefined)[], controller?: AbortController): AbortSignal => {
+  const internalController = controller ?? new AbortController();
 
   for (const signal of signals) {
     if (!signal) continue;
 
     if (signal.aborted) {
-      controller.abort();
+      internalController.abort();
       break;
     }
 
     // Using { once: true } to prevent memory leaks
-    signal.addEventListener('abort', () => controller.abort(), { once: true });
+    signal.addEventListener('abort', () => internalController.abort(), { once: true });
   }
 
-  return controller.signal;
+  return internalController.signal;
 };
