@@ -53,7 +53,6 @@ describe('retry core happy path', () => {
     const fn = makeFlaky(2, () => new Error('boom'), 'ok');
 
     const p = retry(fn, { retries: 3, onRetry });
-    // keine delayFn => sofort weiter, also keine Zeit vorrücken nötig
     await expect(p).resolves.toBe('ok');
     expect(onRetry).toHaveBeenCalledTimes(2);
   });
@@ -116,7 +115,6 @@ describe('retryOnResult (result filter)', () => {
     });
 
     expect(out).toEqual({ ok: true, data: 123 });
-    // onRetry wird in diesem Pfad nicht getriggert (kein Error), also 0
     expect(onRetry).not.toHaveBeenCalled();
   });
 
@@ -128,8 +126,6 @@ describe('retryOnResult (result filter)', () => {
       retryOnResult: () => true,
     });
 
-    // Nach 2 Versuchen (0->1) gibt retryOnResult immer true,
-    // danach ist retries exhausted und das letzte Result wird zurückgegeben
     expect(out.ok).toBe(false);
   });
 });
