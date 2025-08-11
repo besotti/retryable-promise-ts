@@ -323,6 +323,7 @@ npm run format
 ```
 
 ### Examples
+> **Note:** Examples were generated with the assistance of AI tools and manually reviewed before inclusion.
 
 The repository includes an `examples` directory with sample implementations demonstrating the library's features. These examples are intended for local development and testing purposes and are not included in the published package.
 
